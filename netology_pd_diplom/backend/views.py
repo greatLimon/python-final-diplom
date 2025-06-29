@@ -1,4 +1,3 @@
-from distutils.util import strtobool
 from rest_framework.request import Request
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
@@ -21,6 +20,38 @@ from backend.serializers import UserSerializer, CategorySerializer, ShopSerializ
     OrderItemSerializer, OrderSerializer, ContactSerializer
 from backend.signals import new_user_registered, new_order
 
+from backend.tasks import do_import
+from rest_framework.permissions import IsAuthenticated
+
+
+def strtobool(val):
+    val = str(val).lower()
+    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+        return 1
+    elif val in ('n', 'no', 'f', 'false', 'off', '0'):
+        return 0
+    else:
+        raise ValueError(f"invalid truth value {val!r}")
+
+class PartnerImport(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        if request.user.type != 'shop':
+            return JsonResponse({'Status': False, 'Error': 'Только для магазинов'}, status=403)
+        
+        url = request.data.get('url')
+        if not url:
+            return JsonResponse({'Status': False, 'Errors': 'Не указан URL'})
+        
+        shop = request.user.shop
+        task = do_import.delay(shop.id, url)
+        
+        return JsonResponse({
+            'Status': True,
+            'TaskID': task.id,
+            'Message': 'Задача на импорт поставлена в очередь'
+        })
 
 class RegisterAccount(APIView):
     """

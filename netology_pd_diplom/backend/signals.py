@@ -7,6 +7,7 @@ from django.dispatch import receiver, Signal
 from django_rest_passwordreset.signals import reset_password_token_created
 
 from backend.models import ConfirmEmailToken, User
+from backend.tasks import send_email
 
 new_user_registered = Signal()
 
@@ -26,39 +27,36 @@ def password_reset_token_created(sender, instance, reset_password_token, **kwarg
     """
     # send an e-mail to the user
 
-    msg = EmailMultiAlternatives(
-        # title:
-        f"Password Reset Token for {reset_password_token.user}",
-        # message:
-        reset_password_token.key,
-        # from:
-        settings.EMAIL_HOST_USER,
-        # to:
-        [reset_password_token.user.email]
+    # msg = EmailMultiAlternatives(
+    #     # title:
+    #     f"Password Reset Token for {reset_password_token.user}",
+    #     # message:
+    #     reset_password_token.key,
+    #     # from:
+    #     settings.EMAIL_HOST_USER,
+    #     # to:
+    #     [reset_password_token.user.email]
+    # )
+    # msg.send()
+    send_email.delay(
+        subject=f"Password Reset Token for {reset_password_token.user}",
+        message=reset_password_token.key,
+        to_email=reset_password_token.user.email
     )
-    msg.send()
 
 
 @receiver(post_save, sender=User)
-def new_user_registered_signal(sender: Type[User], instance: User, created: bool, **kwargs):
+def new_user_registered_signal(sender, instance, created, **kwargs): #sender: Type[User], instance: User, created: bool, **kwargs
     """
      отправляем письмо с подтрердждением почты
     """
     if created and not instance.is_active:
-        # send an e-mail to the user
         token, _ = ConfirmEmailToken.objects.get_or_create(user_id=instance.pk)
-
-        msg = EmailMultiAlternatives(
-            # title:
-            f"Password Reset Token for {instance.email}",
-            # message:
-            token.key,
-            # from:
-            settings.EMAIL_HOST_USER,
-            # to:
-            [instance.email]
+        send_email.delay(
+            subject=f"Password Reset Token for {instance.email}",
+            message=token.key,
+            to_email=instance.email
         )
-        msg.send()
 
 
 @receiver(new_order)
@@ -68,15 +66,8 @@ def new_order_signal(user_id, **kwargs):
     """
     # send an e-mail to the user
     user = User.objects.get(id=user_id)
-
-    msg = EmailMultiAlternatives(
-        # title:
-        f"Обновление статуса заказа",
-        # message:
-        'Заказ сформирован',
-        # from:
-        settings.EMAIL_HOST_USER,
-        # to:
-        [user.email]
+    send_email.delay(
+        subject="Обновление статуса заказа",
+        message='Заказ сформирован',
+        to_email=user.email
     )
-    msg.send()
